@@ -1,13 +1,35 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from datetime import datetime
+import math
+from scipy.linalg import solve
+import pandas as pd
+import warnings
 
 
-def plotting(k, der):
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+
+def plotting(k, der, GD, download, folder='plots'):
     plt.plot(k, der, marker='o')
     plt.xlabel('Iterations')
     plt.ylabel('Derivative')
-    plt.title('Graph of the derivative')
-    plt.show()
+    if GD:
+        plt.title('Graph of the derivative for GD')
+    else:
+        plt.title('Graph of the derivative for CG')
+    if download:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+
+        timestamp = datetime.now().strftime('%H%M%S') + f"{datetime.now().microsecond // 1000:03d}"
+        filename = f'plot_{timestamp}.png'
+        filepath = os.path.join(folder, filename)
+
+        plt.savefig(filepath)
+    else:
+        plt.show()
 
 
 def generate(dim):
@@ -17,7 +39,7 @@ def generate(dim):
 
 
 def f(x, Q, c):
-    return 0.5*np.dot(np.transpose(x), np.dot(Q, x)) + np.dot(np.transpose(c), x)
+    return 0.5 * np.dot(np.transpose(x), np.dot(Q, x)) + np.dot(np.transpose(c), x)
 
 
 def gradient(Q, x, c):
@@ -36,63 +58,126 @@ def step_GD(Q, x, c):
     return ak
 
 
-def gradient_descent(Q, c, dim):
+def gradient_descent(Q, c, dim, ths, iter_on_dim):
+    if iter_on_dim:
+        condition = lambda: k < dim
+    else:
+        condition = lambda: k < dim ** 3
+
     x = np.zeros(dim)
     history_x = [np.copy(x)]
     k_values = []
     der_values = []
+    ths_values = []
     k = 0
-    while k < dim:
+
+    while condition():
         dk = direction(Q, x, c)
         ak = step_GD(Q, x, c)
-        x = x + np.dot(ak, dk)
-        # to plot
+        x = x + ak * dk
         k_values.append(k)
         der_values.append(gradient(Q, x, c))
 
+        for _, th in enumerate(ths):
+            if not any(t[0] == th for t in ths_values):
+                if np.all(gradient(Q, x, c) < th):
+                    ths_values.append((th, k))
+
         history_x.append(x.copy())
         k += 1
-    plotting(k_values, der_values)
+
+    if not iter_on_dim:
+        df = pd.DataFrame(ths_values, columns=['Threshold', 'Num of iterations'])
+        print(df.to_string(index=False))
+
+    plotting(k_values, der_values, GD=True, download=False)
+
     return history_x
 
 
 def step_CG(gk, Q, dk):
-    ak = (np.linalg.norm(gk)) / (np.dot(np.transpose(dk), np.dot(Q, dk)))
+    ak = (pow(np.linalg.norm(gk), 2)) / (np.dot(np.transpose(dk), np.dot(Q, dk)))
     return ak
 
 
-def conjugate_gradient(Q, c, dim):
+def conjugate_gradient(Q, c, dim, ths, iter_on_dim):
+    if iter_on_dim:
+        condition = lambda: k < dim
+    else:
+        condition = lambda: k < dim ** 3
+
     x = np.zeros(dim)
     history_x = [np.copy(x)]
+    k_values = []
+    der_values = []
     gk = np.dot(Q, x) + c
     dk = - gk
+    ths_values = []
     k = 0
-    while k < dim:
+
+    while condition():
         ak = step_CG(gk, Q, dk)
-        x = x + np.dot(ak, dk)
+        x = x + ak * dk
+        k_values.append(k)
+        der_values.append(gradient(Q, x, c))
+
+        for _, th in enumerate(ths):
+            if not any(t[0] == th for t in ths_values):
+                if np.all(gradient(Q, x, c) < th):
+                    ths_values.append((th, k))
+
         history_x.append(x.copy())
+
         gk_new = gk + np.dot(ak, np.dot(Q, dk))
-        bk = (np.linalg.norm(gk_new)) / (np.linalg.norm(gk))
-        dk = - gk_new + np.dot(bk, dk)
+        bk = (np.linalg.norm(gk_new) ** 2) / (np.linalg.norm(gk) ** 2)
+        dk = - gk_new + bk * dk
         gk = gk_new
         k += 1
+
+    plotting(k_values, der_values, GD=False, download=False)
+
+    if not iter_on_dim:
+        df = pd.DataFrame(ths_values, columns=['Threshold', 'Num of iterations'])
+        print(df.to_string(index=False))
+
     return history_x
+
+
+def check_solution(Q, c, x_algo):
+    x = solve(Q, -c)
+    if np.all(x == x_algo):
+        print("The result of the algorithm is correct")
+    else:
+        print("The mean of the difference is", np.mean(x - x_algo))
+
+
+def condition_number(matrix):
+    return np.linalg.cond(matrix)
 
 
 if __name__ == '__main__':
     # possible dimensions of the problem
-    dimensions = [2, 3, 5, 7, 10, 20, 40, 50, 80, 100]
+    dimensions = [1, 2, 3, 5, 10, 15, 20, 30, 50, 75]
 
-    # thresholds = [math.pow(10, -1), math.pow(10, -2), math.pow(10, -3), math.pow(10, -5), math.pow(10, -7)]
+    thresholds = [math.pow(10, -1), math.pow(10, -2), math.pow(10, -3),
+                  math.pow(10, -5), math.pow(10, -7)]
+
+    # True if you want to iterate for the dimension of the problem, False if dim^3 (used to get better thresholds)
+    iterate_on_dim = True
 
     for _, dimension in enumerate(dimensions):
         A, c = generate(dimension)
         Q = np.dot(A, np.transpose(A))
+        # print("The matrix condition number is", condition_number(Q))
 
-        x_gd = gradient_descent(Q, c, dimension)
-        #print(x_gd[-1])
-        #x_cg = conjugate_gradient(Q, c, dimension)
-        #print(x_cg[-1])
-        #print(x_gd)
-        #print()
-        #print(x_cg)
+        print("The dimension is", dimension)
+
+        print("Gradient descent part")
+        x_gd = gradient_descent(Q, c, dimension, thresholds, iterate_on_dim)
+        check_solution(Q, c, x_gd[-1])
+
+        print("Conjugate gradient part")
+        x_cg = conjugate_gradient(Q, c, dimension, thresholds, iterate_on_dim)
+        check_solution(Q, c, x_cg[-1])
+
+        print("---------------------------------")
