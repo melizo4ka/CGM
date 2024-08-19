@@ -11,14 +11,13 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def plotting(k, der, GD, download, folder='plots'):
-    plt.plot(k, der, marker='o')
+def plotting(k, der_gd, der_cg, download, folder='plots'):
+    plt.plot(k, der_gd, marker='.', color='Cyan', label="Gradient Descent")
+    plt.plot(k, der_cg, marker='.', color='Magenta', label="Conjugate Gradient")
     plt.xlabel('Iterations')
-    plt.ylabel('Derivative')
-    if GD:
-        plt.title('Graph of the derivative for GD')
-    else:
-        plt.title('Graph of the derivative for CG')
+    plt.ylabel('Norm of the derivative')
+    plt.legend(loc="upper right")
+
     if download:
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -26,10 +25,12 @@ def plotting(k, der, GD, download, folder='plots'):
         timestamp = datetime.now().strftime('%H%M%S') + f"{datetime.now().microsecond // 1000:03d}"
         filename = f'plot_{timestamp}.png'
         filepath = os.path.join(folder, filename)
-
         plt.savefig(filepath)
+
     else:
         plt.show()
+
+    plt.clf()
 
 
 def generate(dim):
@@ -75,8 +76,7 @@ def gradient_descent(Q, c, dim, ths, iter_on_dim):
         dk = direction(Q, x, c)
         ak = step_GD(Q, x, c)
         x = x + ak * dk
-        k_values.append(k)
-        der_values.append(gradient(Q, x, c))
+        der_values.append(np.linalg.norm(gradient(Q, x, c)))
 
         for _, th in enumerate(ths):
             if not any(t[0] == th for t in ths_values):
@@ -85,14 +85,13 @@ def gradient_descent(Q, c, dim, ths, iter_on_dim):
 
         history_x.append(x.copy())
         k += 1
+        k_values.append(k)
 
     if not iter_on_dim:
         df = pd.DataFrame(ths_values, columns=['Threshold', 'Num of iterations'])
         print(df.to_string(index=False))
 
-    plotting(k_values, der_values, GD=True, download=False)
-
-    return history_x
+    return history_x, k_values, der_values
 
 
 def step_CG(gk, Q, dk):
@@ -108,7 +107,6 @@ def conjugate_gradient(Q, c, dim, ths, iter_on_dim):
 
     x = np.zeros(dim)
     history_x = [np.copy(x)]
-    k_values = []
     der_values = []
     gk = np.dot(Q, x) + c
     dk = - gk
@@ -118,8 +116,7 @@ def conjugate_gradient(Q, c, dim, ths, iter_on_dim):
     while condition():
         ak = step_CG(gk, Q, dk)
         x = x + ak * dk
-        k_values.append(k)
-        der_values.append(gradient(Q, x, c))
+        der_values.append(np.linalg.norm(gradient(Q, x, c)))
 
         for _, th in enumerate(ths):
             if not any(t[0] == th for t in ths_values):
@@ -134,13 +131,11 @@ def conjugate_gradient(Q, c, dim, ths, iter_on_dim):
         gk = gk_new
         k += 1
 
-    plotting(k_values, der_values, GD=False, download=False)
-
     if not iter_on_dim:
         df = pd.DataFrame(ths_values, columns=['Threshold', 'Num of iterations'])
         print(df.to_string(index=False))
 
-    return history_x
+    return history_x, der_values
 
 
 def check_solution(Q, c, x_algo):
@@ -173,11 +168,13 @@ if __name__ == '__main__':
         print("The dimension is", dimension)
 
         print("Gradient descent part")
-        x_gd = gradient_descent(Q, c, dimension, thresholds, iterate_on_dim)
+        x_gd, k_val, der_gd = gradient_descent(Q, c, dimension, thresholds, iterate_on_dim)
         check_solution(Q, c, x_gd[-1])
 
         print("Conjugate gradient part")
-        x_cg = conjugate_gradient(Q, c, dimension, thresholds, iterate_on_dim)
+        x_cg, der_cg = conjugate_gradient(Q, c, dimension, thresholds, iterate_on_dim)
         check_solution(Q, c, x_cg[-1])
+
+        plotting(k_val, der_gd, der_cg, download=True)
 
         print("---------------------------------")
