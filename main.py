@@ -80,7 +80,7 @@ def gradient_descent(Q, c, dim, ths, iter_on_dim):
 
         for _, th in enumerate(ths):
             if not any(t[0] == th for t in ths_values):
-                if np.all(gradient(Q, x, c) < th):
+                if np.linalg.norm(gradient(Q, x, c)) < th:
                     ths_values.append((th, k))
 
         history_x.append(x.copy())
@@ -120,7 +120,7 @@ def conjugate_gradient(Q, c, dim, ths, iter_on_dim):
 
         for _, th in enumerate(ths):
             if not any(t[0] == th for t in ths_values):
-                if np.all(gradient(Q, x, c) < th):
+                if np.linalg.norm(gradient(Q, x, c)) < th:
                     ths_values.append((th, k))
 
         history_x.append(x.copy())
